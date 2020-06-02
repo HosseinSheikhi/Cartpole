@@ -2,8 +2,8 @@ import gym
 from ActorCritic import A2CAgent
 import numpy as np
 from collections import deque
-file = open("C:/Users/Hossein/Desktop/a2c-3step.txt", "a")
-MAX_TRAINING_EPISODE = 330
+file = open("/home/hossein/Desktop/cartpole-a2c-5step_v2.txt", "a")
+MAX_TRAINING_EPISODE = 600
 LOOK_AHEAD = 3
 
 

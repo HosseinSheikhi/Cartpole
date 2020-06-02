@@ -20,8 +20,8 @@ class A2CAgent:
         self.actor_network = ActorNetwork(self.num_actions, shared_blk)
         self.critic_network = CriticNetwork(shared_blk)
 
-        self.policy_opt = tf.optimizers.Adam(learning_rate=0.001)  # 0.0005
-        self.value_opt = tf.optimizers.Adam(learning_rate=0.001)  # 0.001
+        self.actor_optimizer = tf.optimizers.Adam(learning_rate=0.00025)  # 0.0005
+        self.critic_optimizer = tf.optimizers.Adam(learning_rate=0.0005)  # 0.001
 
     def act(self, state):
         action_prob = self.actor_network.predict(state)
@@ -54,28 +54,27 @@ class A2CAgent:
         entropy = tf.reduce_sum(y_pred * tf.math.log(y_pred))
         policy_loss = tf.reduce_mean(tf.one_hot(y_true, self.num_actions) * tf.math.log(y_pred))
         loss = -policy_loss * tf.stop_gradient(advantage) - 0.01 * entropy
-        # tf.print(y_true, advantage, loss)
         return loss
 
     @tf.function
-    def value_network_optimization(self, x, y):
+    def critic_network_optimization(self, x, y):
         with tf.GradientTape() as g:
             prediction = self.critic_network(x)
             loss = self.value_network_loss_function(y, prediction)
 
         trainable_variables = self.critic_network.trainable_variables
         gradients = g.gradient(loss, trainable_variables)
-        self.value_opt.apply_gradients(zip(gradients, trainable_variables))
+        self.critic_optimizer.apply_gradients(zip(gradients, trainable_variables))
 
     @tf.function
-    def policy_network_optimization(self, x, y, advantage):
+    def actor_network_optimization(self, x, y, advantage):
         with tf.GradientTape() as g:
             prediction = self.actor_network(x)
             loss = self.policy_network_loss_function(y, prediction, advantage)
 
         trainable_variables = self.actor_network.trainable_variables
         gradients = g.gradient(loss, trainable_variables)
-        self.policy_opt.apply_gradients(zip(gradients, trainable_variables))
+        self.actor_optimizer.apply_gradients(zip(gradients, trainable_variables))
 
     def train(self, n_step_stack):
         current_states = []
@@ -90,11 +89,6 @@ class A2CAgent:
             rewards.append(r)
             terminals.append(d)
 
-        # current_states = np.array(current_states).squeeze()
-        # next_states = np.array(next_states).squeeze()
-        # rewards = np.array(rewards).squeeze()
-        # actions = np.array(actions).squeeze()
-        # terminals = np.array(terminals).squeeze()
         target, advantage = self.calculate_target(current_states, next_states, rewards, terminals)
 
         value_train_ds = tf.data.Dataset.from_tensor_slices((current_states[0], target)).batch(BATCH_SIZE)
@@ -103,7 +97,7 @@ class A2CAgent:
             BATCH_SIZE)
 
         for (x, y) in value_train_ds:
-            self.value_network_optimization(x, y)
+            self.critic_network_optimization(x, y)
 
         for (x, y) in policy_train_ds:
-            self.policy_network_optimization(x, y, tf.Variable(advantage))
+            self.actor_network_optimization(x, y, tf.Variable(advantage))
