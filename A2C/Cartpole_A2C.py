@@ -1,9 +1,10 @@
 import gym
 from ActorCritic import A2CAgent
 import numpy as np
-
-file = open("C:/Users/Hossein/Desktop/a2c-v0.txt", "a")
-MAX_TRAINING_STP = 20000
+from collections import deque
+file = open("C:/Users/Hossein/Desktop/a2c-3step.txt", "a")
+MAX_TRAINING_EPISODE = 330
+LOOK_AHEAD = 3
 
 
 def cartpole():
@@ -14,28 +15,32 @@ def cartpole():
     episode_num = 0
     action_num = 0
     finish = 0
+    n_step_stack = deque(maxlen=LOOK_AHEAD)
     while True:
         episode_num += 1
         state = env.reset()
         state = np.reshape(state, [1, observation_space_size])
         t = 0
         while True:
+            action_num += 1
             finish += 1
             env.render()
             action = a2c_agent.act(state)
             state_next, reward, terminal, info = env.step(action)
             reward = reward if not terminal else -reward
             state_next = np.reshape(state_next, [1, observation_space_size])
+            n_step_stack.append([state, action, state_next, reward, terminal])
+            if action_num > LOOK_AHEAD:
+                a2c_agent.train(n_step_stack)
 
-            a2c_agent.train(state, action, state_next, reward, terminal)
             state = state_next
             t += 1
-            action_num += 1
             if terminal:
-                print("Episode {} finished after {} timesteps, steps remaining {}".format(episode_num, t, MAX_TRAINING_STP-finish))
+                print("Episode {} finished after {} timesteps, steps remaining {}".format(episode_num, t,
+                                                                                          MAX_TRAINING_EPISODE - episode_num))
                 file.write(str(episode_num) + "  " + str(t) + "\n")
                 break
-        if finish > MAX_TRAINING_STP:
+        if episode_num > MAX_TRAINING_EPISODE:
             file.close()
             break
 

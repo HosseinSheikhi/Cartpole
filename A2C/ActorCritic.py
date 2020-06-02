@@ -21,17 +21,28 @@ class A2CAgent:
         self.critic_network = CriticNetwork(shared_blk)
 
         self.policy_opt = tf.optimizers.Adam(learning_rate=0.001)  # 0.0005
-        self.value_opt = tf.optimizers.Adam(learning_rate=0.005)  # 0.001
+        self.value_opt = tf.optimizers.Adam(learning_rate=0.001)  # 0.001
 
     def act(self, state):
         action_prob = self.actor_network.predict(state)
         action = np.random.choice(self.num_actions, p=action_prob[0])
         return action
 
-    def calculate_target(self, state, next_state, reward, terminal):
-        v_current_state = self.critic_network(state)
-        v_next_state = self.critic_network(next_state)
-        value_target = reward + GAMMA * v_next_state * (1 - int(terminal))
+    def calculate_target(self, states, next_states, rewards, terminals):
+        LOOK_AHEAD = len(states)
+
+        look_ahead_reward = 0
+        terminal_happend = 0
+        for k in range(LOOK_AHEAD):
+            look_ahead_reward += np.power(GAMMA, k) * rewards[k]
+            if terminals[k]:
+                terminal_happend = 1
+                break
+
+        v_current_state = self.critic_network(states[0])
+        v_next_state = self.critic_network(next_states[LOOK_AHEAD - 1])
+        value_target = look_ahead_reward + np.power(GAMMA, k + 1) * v_next_state * (1 - terminal_happend)
+
         advantage = value_target - v_current_state
         return value_target, advantage
 
@@ -39,10 +50,9 @@ class A2CAgent:
         return tf.square(y_true - y_pred)
 
     def policy_network_loss_function(self, y_true, y_pred, advantage):
-        action_prob = tf.nn.softmax(y_pred)
-        action_prob = tf.clip_by_value(action_prob, clip_value_min=EPSILON, clip_value_max=1 - EPSILON)
-        entropy = tf.reduce_sum(action_prob * tf.math.log(action_prob))
-        policy_loss = tf.reduce_mean(tf.one_hot(y_true, self.num_actions) * tf.math.log(action_prob))
+        y_pred = tf.clip_by_value(y_pred, clip_value_min=EPSILON, clip_value_max=1 - EPSILON)
+        entropy = tf.reduce_sum(y_pred * tf.math.log(y_pred))
+        policy_loss = tf.reduce_mean(tf.one_hot(y_true, self.num_actions) * tf.math.log(y_pred))
         loss = -policy_loss * tf.stop_gradient(advantage) - 0.01 * entropy
         # tf.print(y_true, advantage, loss)
         return loss
@@ -67,13 +77,29 @@ class A2CAgent:
         gradients = g.gradient(loss, trainable_variables)
         self.policy_opt.apply_gradients(zip(gradients, trainable_variables))
 
-    def train(self, state, action, next_state, reward, terminal):
+    def train(self, n_step_stack):
+        current_states = []
+        next_states = []
+        rewards = []
+        actions = []
+        terminals = []
+        for _, (s, a, s_, r, d) in enumerate(n_step_stack):
+            current_states.append(s)
+            actions.append(a)
+            next_states.append(s_)
+            rewards.append(r)
+            terminals.append(d)
 
-        target, advantage = self.calculate_target(state, next_state, reward, terminal)
+        # current_states = np.array(current_states).squeeze()
+        # next_states = np.array(next_states).squeeze()
+        # rewards = np.array(rewards).squeeze()
+        # actions = np.array(actions).squeeze()
+        # terminals = np.array(terminals).squeeze()
+        target, advantage = self.calculate_target(current_states, next_states, rewards, terminals)
 
-        value_train_ds = tf.data.Dataset.from_tensor_slices((state, target)).batch(BATCH_SIZE)
+        value_train_ds = tf.data.Dataset.from_tensor_slices((current_states[0], target)).batch(BATCH_SIZE)
 
-        policy_train_ds = tf.data.Dataset.from_tensor_slices((state, tf.Variable([action], dtype=tf.int32))).batch(
+        policy_train_ds = tf.data.Dataset.from_tensor_slices((current_states[0], tf.Variable([actions[0]], dtype=tf.int32))).batch(
             BATCH_SIZE)
 
         for (x, y) in value_train_ds:
