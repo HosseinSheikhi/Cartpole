@@ -1,9 +1,10 @@
 from CriticNetwork import CriticNetwork
 from ActorNetwork import ActorNetwork
 from SharedLayers import SharedLayer
+from log_metric import A2CMetric
 import numpy as np
 import tensorflow as tf
-
+import datetime
 BATCH_SIZE = 1
 GAMMA = 0.99
 EPSILON = tf.keras.backend.epsilon()
@@ -22,6 +23,12 @@ class A2CAgent:
 
         self.actor_optimizer = tf.optimizers.Adam(learning_rate=0.00025)  # 0.0005
         self.critic_optimizer = tf.optimizers.Adam(learning_rate=0.0005)  # 0.001
+
+        current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+        train_log_dir = 'logs/gradient_tape/' + current_time + '/train'
+        self.train_summary_writer = tf.summary.create_file_writer(train_log_dir)
+        self.critic_loss_metric = A2CMetric()
+        self.epoch = 0
 
     def act(self, state):
         action_prob = self.actor_network.predict(state)
@@ -56,12 +63,13 @@ class A2CAgent:
         loss = -policy_loss * tf.stop_gradient(advantage) - 0.01 * entropy
         return loss
 
+
     @tf.function
     def critic_network_optimization(self, x, y):
         with tf.GradientTape() as g:
             prediction = self.critic_network(x)
             loss = self.value_network_loss_function(y, prediction)
-
+        self.critic_loss_metric.update_state(tf.squeeze(y), tf.squeeze(prediction))
         trainable_variables = self.critic_network.trainable_variables
         gradients = g.gradient(loss, trainable_variables)
         self.critic_optimizer.apply_gradients(zip(gradients, trainable_variables))
@@ -96,8 +104,13 @@ class A2CAgent:
         policy_train_ds = tf.data.Dataset.from_tensor_slices((current_states[0], tf.Variable([actions[0]], dtype=tf.int32))).batch(
             BATCH_SIZE)
 
+        self.epoch += 1
         for (x, y) in value_train_ds:
             self.critic_network_optimization(x, y)
+            with self.train_summary_writer.as_default():
+                tf.summary.scalar('loss', self.critic_loss_metric.result(), step=self.epoch)
+
+        self.critic_loss_metric.reset_states()
 
         for (x, y) in policy_train_ds:
             self.actor_network_optimization(x, y, tf.Variable(advantage))
