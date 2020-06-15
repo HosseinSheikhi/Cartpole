@@ -4,6 +4,7 @@ import tensorflow as tf
 from tensorflow import keras
 from ActorCriticNet import ActorCriticNet
 from log_metric import A2CMetric
+from Memory import Memory
 import datetime
 
 """
@@ -15,10 +16,10 @@ import datetime
 """
 
 GAMMA = 0.99  # discount factor
-LOOKAHEAD = 100  # Lookahead is equivalent to the t_max value in the A3C paper
+LOOKAHEAD = 5  # Lookahead is equivalent to the t_max value in the A3C paper
 EPSILON = tf.keras.backend.epsilon()
 
-LOGGING = True
+LOGGING = False
 current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 critic_loss_log_dir = 'logs/gradient_tape/' + current_time + '/critic_' + str(LOOKAHEAD)
 actor_loss_log_dir = 'logs/gradient_tape/' + current_time + '/actor_' + str(LOOKAHEAD)
@@ -48,13 +49,13 @@ class A2CAgent:
         action_prob, _ = self.a2c_network(state)
         return np.random.choice(self.num_actions, p=np.squeeze(action_prob))
 
-    def prepare_train(self, states_hist, actions_hist, rewards_hist, next_state):
-        actions_one_hot = tf.one_hot(actions_hist, depth=self.num_actions)
-        batch_state = states_hist[0]
-        for i in range(1, len(states_hist)):
-            batch_state = tf.concat([batch_state, states_hist[i]], 0)
+    def prepare_train(self, memory, next_state):
+        actions_one_hot = tf.one_hot(memory.action_history, depth=self.num_actions)
+        batch_state = memory.state_history[0]
+        for i in range(1, len(memory.state_history)):
+            batch_state = tf.concat([batch_state, memory.state_history[i]], 0)
 
-        self.train(batch_state, next_state, rewards_hist, actions_one_hot)
+        self.train(batch_state, next_state, memory.reward_history, actions_one_hot)
 
     def train(self, states_in_batch, next_state, rewards, actions):
         tvs = self.a2c_network.trainable_variables
@@ -115,15 +116,13 @@ def run():
     episode_num = 1
     episode_done = True
     a2c_agent = A2CAgent(env.action_space.n, env.observation_space.shape[0])
-
-    states_hist = []
-    actions_hist = []
-    rewards_hist = []
+    memory = Memory()
     episode_reward = 1
+
     while True:
         if episode_done:
             state = env.reset()
-            next_state = []  # next state will pas to initialize the accumulated reward
+            next_state = []  # next state will pass to initialize the accumulated reward
             episode_done = False
 
         for i in range(LOOKAHEAD):
@@ -131,27 +130,22 @@ def run():
 
             state = tf.convert_to_tensor(state)
             state = tf.expand_dims(state, 0)
-
             action = a2c_agent.act(state)
-            states_hist.append(state)
-            actions_hist.append(action)
+            memory.store_state_action(state, action)
             state, reward, episode_done, _ = env.step(action)
             if episode_done and episode_reward < 198:
                 reward = -1
-            rewards_hist.append(reward)
+            memory.store_reward(reward)
+            episode_reward += reward
+
             next_state = state
             if episode_done:
                 next_state = []  # if episode is done next state is None,
                 break
 
-        a2c_agent.prepare_train(states_hist, actions_hist, rewards_hist, next_state)
+        a2c_agent.prepare_train(memory, next_state)
 
-        episode_reward += sum(rewards_hist)
-
-        states_hist.clear()
-        actions_hist.clear()
-        rewards_hist.clear()
-
+        memory.clear()
         if episode_done:
             template = 'episode num {}  ends after {} time steps'
             print(template.format(episode_num, episode_reward))
