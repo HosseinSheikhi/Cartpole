@@ -3,7 +3,7 @@ from ActorCritic import A2CAgent
 import numpy as np
 from collections import deque
 MAX_TRAINING_EPISODE = 2000
-LOOK_AHEAD = 3
+LOOK_AHEAD = 5
 
 
 def cartpole():

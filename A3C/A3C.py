@@ -14,7 +14,7 @@ import tensorflow as tf
 from tensorflow.python import keras
 from tensorflow.python.keras import layers
 
-#tf.enable_eager_execution()
+tf.enable_eager_execution()
 
 parser = argparse.ArgumentParser(description='Run A3C algorithm on the game '
                                              'Cartpole.')
@@ -136,8 +136,7 @@ class MasterAgent():
         env = gym.make(self.game_name)
         self.state_size = env.observation_space.shape[0]
         self.action_size = env.action_space.n
-
-        self.opt = tf.keras.optimizers.Adam(args.lr)
+        self.opt = tf.train.AdamOptimizer(args.lr, use_locking=True)
         print(self.state_size, self.action_size)
 
         self.global_model = ActorCriticModel(self.state_size, self.action_size)  # global network
@@ -350,7 +349,7 @@ class Worker(threading.Thread):
 
         # Calculate our policy loss
         policy = tf.nn.softmax(logits)
-        entropy = tf.nn.softmax_cross_entropy_with_logits(labels=policy, logits=logits)
+        entropy = tf.nn.softmax_cross_entropy_with_logits_v2(labels=policy, logits=logits)
 
         policy_loss = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=memory.actions,
                                                                      logits=logits)
@@ -363,7 +362,7 @@ class Worker(threading.Thread):
 if __name__ == '__main__':
     print(args)
     master = MasterAgent()
-    #if args.train:
-    master.train()
-    # else:
-    #master.play()
+    if args.train:
+        master.train()
+    else:
+        master.play()

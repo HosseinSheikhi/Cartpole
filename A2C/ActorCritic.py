@@ -9,11 +9,11 @@ import datetime
 BATCH_SIZE = 1
 GAMMA = 0.99
 EPSILON = tf.keras.backend.epsilon()
-LOGGING = False
+LOGGING = True
 current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-critic_loss_log_dir = 'logs/gradient_tape/' + current_time + '/critic_3'
-actor_loss_log_dir = 'logs/gradient_tape/' + current_time + '/actor_3'
-a2c_reward_log_dir = 'logs/gradient_tape/' + current_time + '/a2c_reward_3'
+critic_loss_log_dir = 'logs/gradient_tape/' + current_time + '/critic_5'
+actor_loss_log_dir = 'logs/gradient_tape/' + current_time + '/actor_5'
+a2c_reward_log_dir = 'logs/gradient_tape/' + current_time + '/a2c_reward_5'
 
 
 class A2CAgent:
@@ -84,6 +84,7 @@ class A2CAgent:
         with tf.GradientTape() as g:
             prediction = self.critic_network(x)
             loss = self.value_network_loss_function(y, prediction)
+
         if LOGGING: self.critic_loss_metric.update_state(tf.squeeze(loss))
         trainable_variables = self.critic_network.trainable_variables
         gradients = g.gradient(loss, trainable_variables)
@@ -94,6 +95,7 @@ class A2CAgent:
         with tf.GradientTape() as g:
             prediction = self.actor_network(x)
             loss = self.policy_network_loss_function(y, prediction, advantage)
+
         if LOGGING: self.actor_loss_metric.update_state(tf.squeeze(loss))
         trainable_variables = self.actor_network.trainable_variables
         gradients = g.gradient(loss, trainable_variables)
