@@ -124,6 +124,10 @@ def run():
             state = env.reset()
             next_state = []  # next state will pass to initialize the accumulated reward
             episode_done = False
+            template = 'episode num {}  ends after {} time steps'
+            print(template.format(episode_num, episode_reward))
+            episode_num += 1
+            episode_reward = 1
 
         for i in range(LOOKAHEAD):
             env.render()
@@ -144,13 +148,8 @@ def run():
                 break
 
         a2c_agent.prepare_train(memory, next_state)
-
         memory.clear()
-        if episode_done:
-            template = 'episode num {}  ends after {} time steps'
-            print(template.format(episode_num, episode_reward))
-            episode_num += 1
-            episode_reward = 1
+
 
 
 def main():
