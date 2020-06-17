@@ -2,6 +2,8 @@ from ActorCriticNet import ActorCriticNet
 from WorkerAgent import WorkerAgent
 import gym
 import tensorflow as tf
+import multiprocessing
+from multiprocessing import Queue
 
 
 class MasterAgent:
@@ -13,11 +15,26 @@ class MasterAgent:
         self.optimizer = tf.keras.optimizers.Adam()
 
     def train(self):
-        worker = WorkerAgent(self.num_actions, self.num_states, self.actor_critic_net, self.optimizer, 1)
-        worker.start()
+        res_queue = Queue()
+        workers = [WorkerAgent(self.num_actions,
+                               self.num_states,
+                               i,
+                               self.actor_critic_net,
+                               self.optimizer,
+                               res_queue) for i in range(multiprocessing.cpu_count())]
+        for worker in workers:
+            worker.start()
 
-        worker2 = WorkerAgent(self.num_actions, self.num_states, self.actor_critic_net, self.optimizer, 2)
-        worker2.start()
+        average_reward = []
+        while True:
+            if not res_queue.empty():
+                average_reward.append(res_queue.get())
+                if len(average_reward) == multiprocessing.cpu_count():
+                    template = "Average reward: {} "
+                    print(template.format(sum(average_reward) / len(average_reward)))
+                    average_reward.clear()
+
+        [w.join() for w in workers]
 
     def test(self):
         pass
