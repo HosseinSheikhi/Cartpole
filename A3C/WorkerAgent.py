@@ -1,11 +1,13 @@
 import numpy as np
 import tensorflow as tf
-import threading
 from ActorCriticNet import ActorCriticNet
 from Trajectory import Trajectory
 import gym
 import datetime
 from log_metric import A3CMetric
+import ray
+
+ray.init()
 
 LOOKAHEAD = 5
 GAMMA = 0.99
@@ -15,21 +17,20 @@ LOGGING = False
 current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 
 
-class WorkerAgent(threading.Thread):
-    def __init__(self, num_actions, num_states, worker_id, global_actor_critic, global_optimizer, res_queue):
-        super(WorkerAgent, self).__init__()
+@ray.remote
+class WorkerAgent(object):
+    def __init__(self, num_actions, num_states, worker_id, res_queue):
 
         self.num_actions = num_actions
         self.num_states = num_states
         self.local_actor_critic = ActorCriticNet(self.num_actions, self.num_states).create_network()
-        self.global_actor_critic = global_actor_critic
-        self.global_optimizer = global_optimizer
+        self.local_optimizer = tf.keras.optimizers.Adam()
         self.res_queue = res_queue
         self.worker_id = worker_id
         self.critic_loss = tf.keras.losses.Huber()
 
         # Update local model with new weights
-        self.local_actor_critic.set_weights(self.global_actor_critic.get_weights())
+        # self.local_actor_critic.set_weights(self.global_actor_critic.get_weights())
 
         if LOGGING:
             critic_loss_log_dir = 'logs/gradient_tape/' + current_time + '/critic_' + str(self.worker_id)
@@ -47,6 +48,18 @@ class WorkerAgent(threading.Thread):
     def act(self, state):
         policy, _ = self.local_actor_critic(state)
         return np.random.choice(self.num_actions, p=np.squeeze(policy))
+
+    def get_weights(self):
+        """
+        ToDO: based on the A3C paper, there is just one optimizer which just optimize the global network
+              But in this implementation we are optimizing local network instead of passing gradients to optimize the
+              global net. I do not know whether there is any difference or not
+        :return:
+        """
+        return  self.worker_id#self.local_actor_critic.trainable_variables
+
+    def set_weights(self, weights):
+        self.local_actor_critic.set_weights(weights)
 
     def train(self, trajectory, next_state):
 
@@ -90,9 +103,9 @@ class WorkerAgent(threading.Thread):
                 grads = tape.gradient(total_loss, self.local_actor_critic.trainable_variables)
                 accum_grads = [accum_vars[i].assign_add(gv) for i, gv in enumerate(grads)]
         del tape
-        self.global_optimizer.apply_gradients(zip(accum_grads, self.global_actor_critic.trainable_variables))
+        self.local_optimizer.apply_gradients(zip(accum_grads, self.local_actor_critic.trainable_variables))
         # Update local model with new weights
-        self.local_actor_critic.set_weights(self.global_actor_critic.get_weights())
+        # self.local_actor_critic.set_weights(self.global_actor_critic.get_weights())
 
     def run(self):
         env = gym.make("CartPole-v0")
@@ -116,7 +129,7 @@ class WorkerAgent(threading.Thread):
                 # env.render()
                 state = tf.convert_to_tensor(state)
                 state = tf.expand_dims(state, 0)
-                action =self.act(state)
+                action = self.act(state)
                 trajectory.store_state_action(state, action)
 
                 state, reward, episode_done, _ = env.step(action)
@@ -130,6 +143,9 @@ class WorkerAgent(threading.Thread):
                 if episode_done:
                     next_state = []
                     break
+
+            if episode_num==10:
+                return True
 
             self.train(trajectory, next_state)
             trajectory.clear()

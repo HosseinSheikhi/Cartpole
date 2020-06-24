@@ -3,7 +3,10 @@ from WorkerAgent import WorkerAgent
 import gym
 import tensorflow as tf
 import multiprocessing
-from multiprocessing import Queue
+from ray.experimental.queue import Queue
+import ray
+
+tf.config.set_visible_devices([], 'GPU')
 
 
 class MasterAgent:
@@ -16,25 +19,22 @@ class MasterAgent:
 
     def train(self):
         res_queue = Queue()
-        workers = [WorkerAgent(self.num_actions,
-                               self.num_states,
-                               i,
-                               self.actor_critic_net,
-                               self.optimizer,
-                               res_queue) for i in range(multiprocessing.cpu_count())]
-        for worker in workers:
-            worker.start()
+        workers = [WorkerAgent.remote(self.num_actions,
+                                      self.num_states,
+                                      i,
+                                      res_queue) for i in range(multiprocessing.cpu_count())]
+        workers_results = [worker.run.remote() for worker in workers]
 
         average_reward = []
         while True:
+            #print(len(res_queue))
+            #print(len(gradients_queue))
             if not res_queue.empty():
                 average_reward.append(res_queue.get())
                 if len(average_reward) == multiprocessing.cpu_count():
                     template = "Average reward: {} "
                     print(template.format(sum(average_reward) / len(average_reward)))
                     average_reward.clear()
-
-        [w.join() for w in workers]
 
     def test(self):
         pass
