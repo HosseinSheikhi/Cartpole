@@ -116,14 +116,13 @@ class WorkerAgent(threading.Thread):
                 # env.render()
                 state = tf.convert_to_tensor(state)
                 state = tf.expand_dims(state, 0)
-                action =self.act(state)
-                trajectory.store_state_action(state, action)
-
+                action = self.act(state)
+                trajectory.store(s=state, a=action)
                 state, reward, episode_done, _ = env.step(action)
                 if episode_done:
                     reward = -1
 
-                trajectory.store_reward(reward)
+                trajectory.store(r=reward)
                 episode_reward += reward
                 next_state = state
 

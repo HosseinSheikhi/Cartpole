@@ -2,7 +2,7 @@ import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers
 
-HIDDEN_UNITS_1 = 128  # Number of units in the first hidden layer
+HIDDEN_UNITS_1 = 256  # Number of units in the first hidden layer
 HIDDEN_UNITS_2 = 128  # Number of units in the second hidden layer
 
 

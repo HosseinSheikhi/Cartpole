@@ -4,6 +4,7 @@ import gym
 import tensorflow as tf
 import multiprocessing
 from multiprocessing import Queue
+tf.config.set_visible_devices([], 'GPU')
 
 
 class MasterAgent:
